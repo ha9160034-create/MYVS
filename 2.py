@@ -1,6 +1,87 @@
 import pygame
 from sys import exit
-from random import randint
+from random import randint , choice
+
+class Player(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        player_walk_1=pygame.image.load("mario_walk_1.png").convert_alpha()
+        player_walk_2=pygame.image.load("mario_walk_2.png").convert_alpha()
+        player_walk_1=pygame.transform.scale(player_walk_1,(70,90))
+        player_walk_2=pygame.transform.scale(player_walk_2,(70,90))
+        self.player_walk= [player_walk_1,player_walk_2]
+        self.player_index= 0
+        self.player_jump=pygame.image.load('mario_jump.png').convert_alpha()
+        self.player_jump=pygame.transform.scale(self.player_jump,(70,90))
+
+        self.image= self.player_walk[self.player_index]
+        self.rect= self.image.get_rect(midbottom=(80,380))
+        self.gravity = 0
+
+        self.jump_sound= pygame.mixer.Sound('mario_jump.mp3')
+        self.death_sound= pygame.mixer.Sound('mario_death.mp3')
+    def player_input(self):
+        keys= pygame.key.get_pressed()
+        if keys[pygame.K_SPACE] and self.rect.bottom >= 380:
+            self.gravity = -20
+            self.jump_sound.play()
+        if keys[pygame.K_RIGHT] and self.rect.right < 800:
+            self.rect.right += 3
+        if keys[pygame.K_LEFT] and self.rect.left > 0:
+            self.rect.left -= 3
+
+    def apply_gravity(self):
+        self.gravity += 1
+        self.rect.y += self.gravity
+        if self.rect.bottom >= 380:self.rect.bottom = 380
+        
+    def update(self):
+        self.player_input()
+        self.apply_gravity()
+        self.animation_state()
+
+    def animation_state(self):
+        if self.rect.bottom < 380:self.image = self.player_jump
+        else: 
+            self.player_index += 0.1
+            if self.player_index > len(self.player_walk):self.player_index = 0
+            self.image= self.player_walk[int(self.player_index)]
+
+class Obstacle(pygame.sprite.Sprite):
+    def __init__(self,type):
+        super().__init__()
+
+        if type == 'owl':
+            owl_walk_1=pygame.image.load("owl_walk_1.png").convert_alpha()
+            owl_walk_1=pygame.transform.scale(owl_walk_1,(70,70))
+            owl_walk_2=pygame.image.load('owl_walk_2.png').convert_alpha()
+            owl_walk_2=pygame.transform.scale(owl_walk_2,(70,70))
+            self.walk=[owl_walk_1,owl_walk_2]
+            y_pos = 250
+        else:
+            snail_walk_1=pygame.image.load("snail_walk_1.png").convert_alpha()
+            snail_walk_1=pygame.transform.scale(snail_walk_1,(59,59))
+            snail_walk_2=pygame.image.load('snail_walk_2.png').convert_alpha()
+            snail_walk_2=pygame.transform.scale(snail_walk_2,(59,59)) 
+            self.walk=[snail_walk_1,snail_walk_2]
+            y_pos = 389
+        self.animation_index = 0
+        self.image= self.walk[self.animation_index]
+        self.rect= self.image.get_rect(midbottom=(randint(900,1100),y_pos))
+    
+    def animation_state(self):
+        self.animation_index += 0.1
+        if self.animation_index >= len(self.walk): self.animation_index = 0
+        self.image= self.walk[int(self.animation_index)]
+
+    def update(self):
+        self.animation_state()
+        self.rect.x -= 6
+        self.destroy()
+
+    def destroy(self):
+        if self.rect.x <= -100:
+            self.kill()   
 
 def display_time():
     current_time= int(pygame.time.get_ticks() / 1000) - start_time
@@ -27,6 +108,16 @@ def collisions(player,obstacles):
             if player.colliderect(obstacle_rect): return False
     return True
 
+def collision_sprite():
+    if pygame.sprite.spritecollide(player.sprite,obstacle_group,False):
+        obstacle_group.empty()
+        player.sprite.rect.midbottom = (80,380)
+        player.gravity = 0
+        bg_music.stop()
+        player.sprite.death_sound.play()
+        return False
+    else: return True
+
 def player_animation():
     global player_surf,player_index
     if player_rect.bottom < 380:
@@ -42,6 +133,8 @@ game_active = False
 
 start_time = 0
 score = 0
+bg_music= pygame.mixer.Sound('mario_sound.mp3')
+bg_music.play(loops = -1)
 
 screen=pygame.display.set_mode((800,500))
 clock=pygame.time.Clock()
@@ -54,16 +147,21 @@ test_font=pygame.font.Font(None,50)
 # font_surface=test_font.render("aba neo",True,"Red")
 # font_rect=font_surface.get_rect(midtop=(sky_rect.midtop))
 
+player=pygame.sprite.GroupSingle()
+player.add(Player())
+
+obstacle_group= pygame.sprite.Group()
+
 ground_surface=pygame.image.load("ground.png").convert_alpha()
 ground=pygame.transform.scale(ground_surface,(820,200))
 
 snail_walk_1=pygame.image.load("snail_walk_1.png").convert_alpha()
-snail_swalk_1=pygame.transform.scale(snail_walk_1,(59,59))
+snail_walk_1=pygame.transform.scale(snail_walk_1,(59,59))
 snail_walk_1_rect=snail_walk_1.get_rect(midbottom=(840,389))
 snail_walk_2=pygame.image.load('snail_walk_2.png')
 snail_walk_2=pygame.transform.scale(snail_walk_2,(59,59))
 snail_walk_2_rect=snail_walk_2.get_rect(midbottom =(840,389))
-snail_walk=[snail_swalk_1,snail_walk_2]
+snail_walk=[snail_walk_1,snail_walk_2]
 snail_walk_index = 0
 snail_surf=snail_walk[snail_walk_index]
 
@@ -117,10 +215,11 @@ while True:
             exit()
         if game_active:
             if event.type == obstacle_timer:
-                if randint(0,1):
-                    obstacle_rect_list.append(snail_surf.get_rect(midbottom = (randint(900,1100),389)))
-                else:
-                    obstacle_rect_list.append(owl_surf.get_rect(midleft = (randint(900,1100),250)))
+                obstacle_group.add(Obstacle(choice(['owl','snail','snail'])))
+                # if randint(0,1):
+                #     obstacle_rect_list.append(snail_surf.get_rect(midbottom = (randint(900,1100),389)))
+                # else:
+                #     obstacle_rect_list.append(owl_surf.get_rect(midleft = (randint(900,1100),250)))
             if event.type==snail_timer:
                 if snail_walk_index == 0: snail_walk_index = 1
                 else: snail_walk_index = 0
@@ -153,13 +252,19 @@ while True:
         # if snail_rect.right <= 0: snail_rect.left = 800
         # screen.blit(snail,snail_rect)
         
-        player_gravity += 1
-        player_rect.y += player_gravity
-        if player_rect.bottom >= 380: player_rect.bottom = 380
-        player_animation()
-        screen.blit(player_surf,player_rect)
-        
-        obstacle_rect_list = obstacle_movement(obstacle_rect_list)
+        # player_gravity += 1
+        # player_rect.y += player_gravity
+        # if player_rect.bottom >= 380: player_rect.bottom = 380
+        # player_animation()
+        # screen.blit(player_surf,player_rect)
+        player.draw(screen)
+        player.update()
+
+        obstacle_group.draw(screen)
+        obstacle_group.update()
+
+        game_active = collision_sprite()
+        # obstacle_rect_list = obstacle_movement(obstacle_rect_list)
 
         # if player_rect.colliderect(snail_rect):
         #     print("collision")
@@ -169,7 +274,7 @@ while True:
         
         # screen.blit(font_surface,font_rect)
         score=display_time()
-        game_active = collisions(player_rect,obstacle_rect_list)
+        # game_active = collisions(player_rect,obstacle_rect_list)
         # if snail_rect.colliderect(player_rect):
         #     game_active = False
     else:
